@@ -1,0 +1,6 @@
+lecture heavily on theoretical material
+Get the Rust Programming language by Steve Klabnik and Carol Nichols
+
+solve leetcodes
+^^^ NEED TO DO
+
