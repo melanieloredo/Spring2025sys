@@ -21,7 +21,12 @@ fn main() {
     //for the sum of all numbers in array
     let mut i = 0;
     let mut sum = 0;
-    while i < array.len(){
+    loop{
+        //exit loop if exceeds the length of array
+        if i >= array.len(){
+            break;
+        }
+        
         sum += array[i]; //add number
         i +=1; //incr counter
     }
