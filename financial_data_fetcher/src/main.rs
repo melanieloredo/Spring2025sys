@@ -1,3 +1,7 @@
+//libraries
+use ureq;
+use serde::Deserialize;
+
 //Bitcoin, Ethereum and SP500 struct
 struct Bitcoin{
     pricing: f64,
