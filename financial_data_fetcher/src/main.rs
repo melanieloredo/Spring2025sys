@@ -1,6 +1,8 @@
 //libraries
 use ureq;
 use serde::Deserialize;
+use std::{fs::File, io::{self, Write}, thread, time::Duration};
+use chrono::Utc;
 
 //Bitcoin, Ethereum and SP500 struct
 struct Bitcoin{
