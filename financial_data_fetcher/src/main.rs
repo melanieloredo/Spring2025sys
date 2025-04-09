@@ -4,19 +4,21 @@ use serde::Deserialize;
 
 //Bitcoin, Ethereum and SP500 struct
 struct Bitcoin{
-    pub pricing: f64,
+    pricing: f64,
 }
 
 struct Ethereum{
-    pub pricing: f64,
+    pricing: f64,
 }
 
 struct SP500{
-    pub pricing: f64,
+    pricing: f64,
 }
 
 //trait pricing
 trait Pricing {
+    fn get_price(&self) -> f64;
+    fn save_to_file(&self, filename: &str);
     fn get_price(&self) -> f64;
 }
 
