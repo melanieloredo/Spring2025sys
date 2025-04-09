@@ -4,15 +4,15 @@ use serde::Deserialize;
 
 //Bitcoin, Ethereum and SP500 struct
 struct Bitcoin{
-    pricing: f64,
+    pub pricing: f64,
 }
 
 struct Ethereum{
-    pricing: f64,
+    pub pricing: f64,
 }
 
 struct SP500{
-    pricing: f64,
+    pub pricing: f64,
 }
 
 //trait pricing
