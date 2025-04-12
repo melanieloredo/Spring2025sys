@@ -3,8 +3,8 @@
 ## 🧠 Features
 
 - Fetches real-time prices for:
-  - **Bitcoin (BTC)** from CoinGecko  
-  - **Ethereum (ETH)** from CoinGecko  
+  - **Bitcoin (BTC)** from [`CoinGecko`](https://docs.coingecko.com/reference/onchain-simple-price) 
+  - **Ethereum (ETH)** from [`CoinGecko`](https://docs.coingecko.com/reference/onchain-simple-price)   
   - **S&P 500** (simulated value)
 - Saves each coin data into a timestamped CSV file (e.g., `bitcoin_price.csv`)
 - Repeats every 10 seconds
