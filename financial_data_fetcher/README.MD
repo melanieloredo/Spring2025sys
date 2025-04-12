@@ -55,8 +55,8 @@ loop {
 1. **With Rust installed**,
 **Install dependenceis and run the program**:
    ```bash
-   cargo add ureq serde serde_json chrono
    cd financial_data_fetcher
+   cargo add ureq serde serde_json chrono
    cargo run
    ```
 
