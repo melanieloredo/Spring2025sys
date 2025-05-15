@@ -1,3 +1,4 @@
+// Bonus Features: --period <sec>, summary statistics, --assert-header <Header:Value> added
 use std::{
     env,                    //CLI arguments
     fs::File,               //for reading files
@@ -9,8 +10,8 @@ use std::{
 };
 
 //import reqwest HTTP client (blocking version)
-use reqwest::blocking::Client;
-use reqwest::blocking::ClientBuilder;
+use reqwest::blocking::{Client, ClientBuilder};
+use std::collections::HashMap;
 use std::fs;
 use std::sync::Mutex; //for thread-safe shared data
 
@@ -24,10 +25,11 @@ struct WebsiteStatus {
     action_status: Result<u16, String>, //http status as a string
     response_time: Duration,            //request length
     timestamp: SystemTime,              //time of check
+    header_valid: bool,
 }
 
 //argument parsed, reading the file, and grabbing the URL
-fn parse_args() -> (Vec<String>, usize, u64, u32) {
+fn parse_args() -> (Vec<String>, usize, u64, u32, Option<u64>, Option<(String, String)>) {
     let args: Vec<String> = env::args().collect();
 
     let mut urls = Vec::new();
@@ -35,6 +37,8 @@ fn parse_args() -> (Vec<String>, usize, u64, u32) {
     let mut workers = num_cpus::get(); //use all CPU cores
     let mut timeout = 5;                //Default timeout in seconds
     let mut retries = 0;                //no retries
+    let mut period = None;
+    let mut assert_header = None;
 
     let mut i = 1;
     while i < args.len() {
@@ -63,6 +67,19 @@ fn parse_args() -> (Vec<String>, usize, u64, u32) {
                     retries = args[i].parse().unwrap_or(retries);
                 }
             }
+            "--period" => {
+                i += 1;
+                if i < args.len() {
+                    period = args[i].parse().ok();
+                }
+            }
+            "--assert-header" => {
+                i += 1;
+                if i < args.len() && args[i].contains(":") {
+                    let parts: Vec<&str> = args[i].splitn(2, ':').collect();
+                    assert_header = Some((parts[0].trim().to_string(), parts[1].trim().to_string()));
+                }
+            }
             _ => {
                 if !args[i].starts_with("--") {
                     urls.push(args[i].clone()); //add plain URLs
@@ -85,11 +102,11 @@ fn parse_args() -> (Vec<String>, usize, u64, u32) {
     }
     //If no URLs provided, show usage and exit
     if urls.is_empty() {
-        eprintln!("Please use the format: cargo run -- [--file filename.txt] [URL ...] [--workers N] [--timeout S] [--retries N]");
+        eprintln!("Please use the format: cargo run -- [--file filename.txt] [URL ...] [--workers N] [--timeout S] [--retries N] [--period S] [--assert-header Header:Value]");
         std::process::exit(2);
     }
 
-    (urls, workers, timeout, retries)
+    (urls, workers, timeout, retries, period, assert_header)
 }
 
 //function to read lines from a file and returns an iterator
@@ -102,12 +119,13 @@ where
 }
 
 //function to check a single website and return status info
-fn check_website(client: &Client, url: &str, timeout: Duration, retries: u32) -> WebsiteStatus {
+fn check_website(client: &Client, url: &str, timeout: Duration, retries: u32, header_check: &Option<(String, String)>) -> WebsiteStatus {
     let mut attempts = 0;
     //Measuring latency | Using std::time::Instant
     let start = Instant::now();
     let timestamp = SystemTime::now();
     let result;
+    let mut header_valid = true; //header
 
     loop {
         //External crate integration | Using a single HTTP client crate (reqwest) correctly
@@ -116,6 +134,9 @@ fn check_website(client: &Client, url: &str, timeout: Duration, retries: u32) ->
         //Error handling | Returning Result<_, String> without panics
         match response {
             Ok(resp) => {
+                if let Some((key, expected)) = header_check {
+                    header_valid = resp.headers().get(key).map_or(false, |v| v.to_str().unwrap_or("") == expected);
+                }
                 result = Ok(resp.status().as_u16());
                 break;
             }
@@ -123,6 +144,7 @@ fn check_website(client: &Client, url: &str, timeout: Duration, retries: u32) ->
                 attempts += 1;
                 if attempts > retries {
                     result = Err(e.to_string());
+                    header_valid = false;
                     break;
                 }
                 thread::sleep(Duration::from_millis(100)); //wait before retry
@@ -136,36 +158,24 @@ fn check_website(client: &Client, url: &str, timeout: Duration, retries: u32) ->
         action_status: result,
         response_time: start.elapsed(),
         timestamp,
+        header_valid,
     }
 }
 
-fn main() {
-
-    //get user input to parse
-    let (urls, workers, timeout_sec, retries) = parse_args();
-    let timeout = Duration::from_secs(timeout_sec);
-    //External crate integration | Using reqwest::blocking::Client
+fn run_once(urls: Vec<String>, workers: usize, timeout: Duration, retries: u32, header_check: &Option<(String, String)>) -> Vec<WebsiteStatus> {
     let client = Arc::new(ClientBuilder::new().timeout(timeout).build().unwrap());
-
-    //Thread creation & coordination | Worker-thread pool pulling jobs from a channel
-    let (tx, rx) = mpsc::channel(); //channel for completion channels
-
-    //share URL queue and result storage in between threads with mutexes
-    let urls = Arc::new(Mutex::new(urls)); 
+    let urls = Arc::new(Mutex::new(urls));
     let results = Arc::new(Mutex::new(Vec::new()));
 
     let mut handles = Vec::new();
     for _ in 0..workers {
-        //Ownership & borrowing across threads | Arc is used to safely share data
-        let urls = Arc::clone(&urls); //clone shared state for the thread
-        let tx = tx.clone();
+        let urls = Arc::clone(&urls);
         let client = Arc::clone(&client);
         let results = Arc::clone(&results);
+        let header_check = header_check.clone();
 
-        //Thread creation | Worker thread loop
-        let handle = thread::spawn(move || { //spawn the worker thread
+        let handle = thread::spawn(move || {
             loop {
-                //next URL to check
                 let url = {
                     let mut locked = urls.lock().unwrap();
                     if locked.is_empty() {
@@ -175,54 +185,75 @@ fn main() {
                 };
 
                 if let Some(url) = url {
-                    //check website status
-                    let status = check_website(&client, &url, timeout, retries);
-                    //Ownership & borrowing across threads | Mutex protects shared result vec
+                    let status = check_website(&client, &url, timeout, retries, &header_check);
                     {
-                        //save result
                         results.lock().unwrap().push(status.clone());
                     }
-                    //output the status
                     let display = match &status.action_status {
-                        Ok(code) => format!("{} OK [{}] {:?}", status.url, code, status.response_time),
+                        Ok(code) => format!("{} OK [{}] {:?} {}", status.url, code, status.response_time, if status.header_valid { "" } else { "[Header Mismatch]" }),
                         Err(e) => format!("{} ERROR [{}] {:?}", status.url, e, status.response_time),
                     };
                     println!("{}", display);
-
-                    //signal that thread is completed
-                    tx.send(()).unwrap();
                 }
             }
         });
         handles.push(handle);
     }
 
-    //wait for threads (workers) to complete
-    for _ in 0..results.lock().unwrap().len() {
-        let _ = rx.recv();
-    }
-    //join all threads for clean exit
     for handle in handles {
         let _ = handle.join();
     }
 
-    // Simple JSON generation | Building a JSON file manually, no helper crates
-    let json_array: Vec<String> = results.lock().unwrap().iter().map(|s| {
+    Arc::try_unwrap(results).unwrap().into_inner().unwrap()
+}
+
+fn print_summary(results: &[WebsiteStatus]) {
+    let times: Vec<u128> = results.iter().map(|r| r.response_time.as_millis()).collect();
+    if times.is_empty() {
+        return;
+    }
+    let min = times.iter().min().unwrap();
+    let max = times.iter().max().unwrap();
+    let avg = times.iter().sum::<u128>() as f64 / times.len() as f64;
+    println!("\nSummary: Min = {}ms, Max = {}ms, Avg = {:.2}ms\n", min, max, avg);
+}
+
+fn write_json(results: &[WebsiteStatus]) {
+    let json_array: Vec<String> = results.iter().map(|s| {
         let status = match &s.action_status {
             Ok(code) => format!("\"status\": {}", code),
             Err(e) => format!("\"error\": \"{}\"", e.replace('"', "\\\"")),
         };
         format!(
-            "{{\"url\": \"{}\", {}, \"response_time_ms\": {}, \"timestamp\": {:?}}}",
+            "{{\"url\": \"{}\", {}, \"response_time_ms\": {}, \"timestamp\": {}, \"header_valid\": {}}}",
             s.url,
             status,
             s.response_time.as_millis(),
-            s.timestamp.duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs()
+            s.timestamp.duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs(),
+            s.header_valid
         )
     }).collect();
 
-    //write JSON array
     let json_output = format!("[\n{}\n]", json_array.join(",\n"));
     fs::write("status.json", json_output).expect("Unable to write JSON file");
+}
+
+fn main() {
+    let (original_urls, workers, timeout_sec, retries, period, header_check) = parse_args();
+    let timeout = Duration::from_secs(timeout_sec);
+
+    loop {
+        let urls = original_urls.clone();
+        let results = run_once(urls, workers, timeout, retries, &header_check);
+        print_summary(&results);
+        write_json(&results);
+
+        if let Some(pause) = period {
+            println!("Sleeping for {} seconds before next check...", pause);
+            thread::sleep(Duration::from_secs(pause));
+        } else {
+            break;
+        }
+    }
 }
 

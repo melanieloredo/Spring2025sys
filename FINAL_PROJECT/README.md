@@ -26,3 +26,7 @@
 6. cargo run -- --file urls.txt --workers 6 --timeout 3 --retries 1
 
 *Purpose*: This one does them all at once
+
+-------
+**Bonus Features**
+-------
