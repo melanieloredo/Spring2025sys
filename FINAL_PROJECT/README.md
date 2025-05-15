@@ -30,3 +30,16 @@
 -------
 **Bonus Features**
 -------
+1. cargo run -- --file urls.txt --period 60
+
+*Purpose*: Runs the website checker in an infinite loop, sleeping for seconds between rounds.
+
+2. Summary Statistics
+
+> Summary: Min = 48ms, Max = 312ms, Avg = 117.20ms
+
+*Purpose*: Runs automatically after every round, giving a summary
+
+3. cargo run -- --file sites.txt --assert-header Server:cloudflare
+
+*Purpose*: Checks that a specific HTTP header equals a given value for each response.
