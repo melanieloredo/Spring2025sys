@@ -4,14 +4,13 @@ use std::{
     fs::File,               //for reading files
     io::{self, BufRead},    //file lines
     path::Path,             //file paths
-    sync::{mpsc, Arc},      //for channels and shared ownership
+    sync::Arc,
     thread,                 //spawning threads
     time::{Duration, Instant, SystemTime}, //timing and timestamps
 };
 
 //import reqwest HTTP client (blocking version)
 use reqwest::blocking::{Client, ClientBuilder};
-use std::collections::HashMap;
 use std::fs;
 use std::sync::Mutex; //for thread-safe shared data
 
